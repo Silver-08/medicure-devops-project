@@ -1,0 +1,38 @@
+# Ignore Java build files
+target/
+*.class
+
+# Ignore IDE files
+.vscode/
+.idea/
+*.iml
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# Ignore logs and temp files
+*.log
+*.tmp
+
+# Ignore node_modules (if any)
+node_modules/
+
+# Ignore Terraform state files
+*.tfstate
+*.tfstate.backup
+.terraform/
+
+# Ignore Ansible facts cache
+.fact_cache/
+
+# Ignore Docker image/build files
+docker-compose.override.yml
+
+# Ignore Jenkins workspace and logs (if any local files exist)
+workspace/
+logs/
+
+# Ignore Kubernetes config (if local)
+.kube/
+

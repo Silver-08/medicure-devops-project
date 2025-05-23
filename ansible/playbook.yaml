@@ -1,0 +1,121 @@
+- hosts: k8s_master
+  become: yes
+  tasks:
+    - name: Install Docker
+      apt:
+        name: docker.io
+        state: present
+        update_cache: yes
+
+    - name: Install Kubernetes tools
+      apt:
+        name: ['apt-transport-https', 'ca-certificates', 'curl']
+        state: present
+        update_cache: yes
+
+    - name: Add Kubernetes signing key
+      apt_key:
+        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+        state: present
+
+    - name: Add Kubernetes apt repository
+      apt_repository:
+        repo: deb http://apt.kubernetes.io/ kubernetes-xenial main
+        state: present
+
+    - name: Install kubeadm, kubelet, kubectl
+      apt:
+        name: ['kubelet', 'kubeadm', 'kubectl']
+        state: present
+        update_cache: yes
+
+    - name: Initialize Kubernetes master node
+      shell: kubeadm init --pod-network-cidr=10.244.0.0/16
+      args:
+        creates: /etc/kubernetes/admin.conf
+
+    - name: Copy kube config for ubuntu user
+      command: >
+        mkdir -p /home/ubuntu/.kube &&
+        sudo cp -i /etc/kubernetes/admin.conf /home/ubuntu/.kube/config &&
+        sudo chown ubuntu:ubuntu /home/ubuntu/.kube/config
+
+    - name: Install Flannel network plugin
+      become_user: ubuntu
+      shell: kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+      environment:
+        KUBECONFIG: /home/ubuntu/.kube/config
+
+    - name: Generate join command and save to file
+      shell: kubeadm token create --print-join-command > /tmp/joincommand.sh
+      register: join_cmd
+
+- hosts: k8s_worker
+  become: yes
+  tasks:
+    - name: Install Docker
+      apt:
+        name: docker.io
+        state: present
+        update_cache: yes
+
+    - name: Install Kubernetes tools
+      apt:
+        name: ['apt-transport-https', 'ca-certificates', 'curl']
+        state: present
+        update_cache: yes
+
+    - name: Add Kubernetes signing key
+      apt_key:
+        url: https://packages.cloud.google.com/apt/doc/apt-key.gpg
+        state: present
+
+    - name: Add Kubernetes apt repository
+      apt_repository:
+        repo: deb http://apt.kubernetes.io/ kubernetes-xenial main
+        state: present
+
+    - name: Install kubeadm, kubelet, kubectl
+      apt:
+        name: ['kubelet', 'kubeadm', 'kubectl']
+        state: present
+        update_cache: yes
+
+    - name: Fetch join command from master node
+      fetch:
+        src: /tmp/joincommand.sh
+        dest: /tmp/joincommand.sh
+        flat: yes
+      delegate_to: "{{ groups['k8s_master'][0] }}"
+
+    - name: Join Kubernetes worker to cluster
+      shell: bash /tmp/joincommand.sh
+      args:
+        creates: /etc/kubernetes/kubelet.conf
+
+- hosts: monitoring
+  become: yes
+  tasks:
+    - name: Install Docker
+      apt:
+        name: docker.io
+        state: present
+        update_cache: yes
+
+    - name: Run Prometheus container
+      docker_container:
+        name: prometheus
+        image: prom/prometheus
+        state: started
+        ports:
+          - "9090:9090"
+        volumes:
+          - /home/ubuntu/prometheus.yml:/etc/prometheus/prometheus.yml
+
+    - name: Run Grafana container
+      docker_container:
+        name: grafana
+        image: grafana/grafana
+        state: started
+        ports:
+          - "3000:3000"

@@ -1,0 +1,56 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKERHUB_CREDENTIALS = 'dockerhub-credentials'
+        DOCKER_IMAGE = "silvy08/healthcare-app"
+        KUBE_CONFIG_PATH = '/home/ubuntu/.kube/config'  // adjust if needed
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git 'https://github.com/StarAgileDevOpsTraining/star-agile-health-care.git'
+            }
+        }
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    dockerImage = docker.build("${DOCKER_IMAGE}:latest")
+                }
+            }
+        }
+        stage('Docker Login & Push') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: "${DOCKERHUB_CREDENTIALS}", usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
+                    sh "docker push ${DOCKER_IMAGE}:latest"
+                }
+            }
+        }
+        stage('Terraform Apply') {
+            steps {
+                dir('terraform') {
+                    sh 'terraform init'
+                    sh 'terraform apply -auto-approve'
+                }
+            }
+        }
+        stage('Ansible Configure') {
+            steps {
+                dir('ansible') {
+                    sh 'ansible-playbook -i inventory playbook.yaml'
+                }
+            }
+        }
+        stage('Deploy to Kubernetes') {
+            steps {
+                sh '''
+                export KUBECONFIG=${KUBE_CONFIG_PATH}
+                kubectl apply -f k8s/deployment.yaml
+                kubectl apply -f k8s/service.yaml
+                '''
+            }
+        }
+    }
+}
